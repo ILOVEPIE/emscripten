@@ -332,7 +332,7 @@ function JSify(data, functionsOnly, givenFunctions) {
           if (item.ident.substr(0, 5) == '__ZTV') {
             js += '\n' + makePointer('[0]', null, BUILD_AS_SHARED_LIB ? 'ALLOC_NORMAL' : 'ALLOC_STATIC', ['void*']) + ';';
           }
-          if (EXPORT_ALL || (item.ident in EXPORTED_GLOBALS)) {
+          if (!ASM_JS && (EXPORT_ALL || (item.ident in EXPORTED_GLOBALS))) {
             js += '\nModule["' + item.ident + '"] = ' + item.ident + ';';
           }
           if (BUILD_AS_SHARED_LIB == 2 && !item.private_) {
@@ -703,7 +703,7 @@ function JSify(data, functionsOnly, givenFunctions) {
           func.JS += '\n//FUNCTION_END_MARKER_OF_SOURCE_FILE_' + associatedSourceFile + '\n';
       }
       
-      if (EXPORT_ALL || (func.ident in EXPORTED_FUNCTIONS)) {
+      if (!ASM_JS && (EXPORT_ALL || (func.ident in EXPORTED_GLOBALS))) {
         func.JS += 'Module["' + func.ident + '"] = ' + func.ident + ';';
       }
 
