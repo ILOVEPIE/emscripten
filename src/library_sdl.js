@@ -1194,7 +1194,7 @@ var LibrarySDL = {
     try {
       SDL.audio.audioOutput = new Audio();
       SDL.audio.hasWebAudio = ((typeof(AudioContext) === "function")||(typeof(webkitAudioContext) === "function"));
-      if(!SDL.audio.hasWebAudio&&(typeof(SDL.audio.audioOutput['mozSetup'])==="function")){
+      if(!SDL.audio.hasWebAudio&&(typeof(SDL.audio.audioOutput['mozSetup'])==="function")))){
           SDL.audio.audioOutput['mozSetup'](SDL.audio.channels, SDL.audio.freq); // use string attributes on mozOutput for closure compiler
           SDL.audio.mozBuffer = new Float32Array(totalSamples);
           SDL.audio.pushAudio = function(ptr, size) {
@@ -1261,13 +1261,13 @@ var LibrarySDL = {
   SDL_CloseAudio: function() {
     if (SDL.audio) {
         try{
-			for(int i = 0; i<SDL.audio.soundSource.length;i++){
+			for(var i = 0; i<SDL.audio.soundSource.length;i++){
 				if(!(typeof(SDL.audio.soundSource[i]==="undefined")){
 					SDL.audio.soundSource[i].stop(0);
 				}
 			}
-			SDL.audo.soundSource[i] = new Array();
         }catch(e){}
+	  SDL.audo.soundSource = null;
       _SDL_PauseAudio(1);
       _free(SDL.audio.buffer);
       SDL.audio = null;
