@@ -382,7 +382,7 @@ LibraryManager.library = {
     // do preloading for the Image/Audio part, as if the typed array were the
     // result of an XHR that you did manually.
     createPreloadedFile: function(parent, name, url, canRead, canWrite, onload, onerror, dontCreateFile) {
-      Browser.ensureObjects();
+      Browser.init();
       var fullname = FS.joinPath([parent, name], true);
       function processData(byteArray) {
         function finish(byteArray) {
@@ -2061,24 +2061,19 @@ LibraryManager.library = {
     // void _exit(int status);
     // http://pubs.opengroup.org/onlinepubs/000095399/functions/exit.html
 
-#if CATCH_EXIT_CODE
     function ExitStatus() {
       this.name = "ExitStatus";
       this.message = "Program terminated with exit(" + status + ")";
       this.status = status;
+      Module.print('Exit Status: ' + status);
     };
     ExitStatus.prototype = new Error();
     ExitStatus.prototype.constructor = ExitStatus;
-#endif
 
     exitRuntime();
     ABORT = true;
 
-#if CATCH_EXIT_CODE
     throw new ExitStatus();
-#else
-    throw 'exit(' + status + ') called, at ' + new Error().stack;
-#endif
   },
   fork__deps: ['__setErrNo', '$ERRNO_CODES'],
   fork: function() {
@@ -2642,7 +2637,7 @@ LibraryManager.library = {
   //   format: A pointer to the format string.
   //   varargs: A pointer to the start of the arguments list.
   // Returns the resulting string string as a character array.
-  _formatString__deps: ['strlen'],
+  _formatString__deps: ['strlen', '_reallyNegative'],
   _formatString: function(format, varargs) {
     var textIndex = format;
     var argIndex = 0;
@@ -2897,7 +2892,6 @@ LibraryManager.library = {
             // Float.
             var currArg = getNextArg('double');
             var argText;
-
             if (isNaN(currArg)) {
               argText = 'nan';
               flagZeroPad = false;
@@ -2932,6 +2926,9 @@ LibraryManager.library = {
                 }
               } else if (next == {{{ charCode('f') }}} || next == {{{ charCode('F') }}}) {
                 argText = currArg.toFixed(effectivePrecision);
+                if (currArg === 0 && __reallyNegative(currArg)) {
+                  argText = '-' + argText;
+                }
               }
 
               var parts = argText.split('e');
@@ -3170,7 +3167,7 @@ LibraryManager.library = {
     for (var i = 0; i < n - 1 && byte_ != {{{ charCode('\n') }}}; i++) {
       byte_ = _fgetc(stream);
       if (byte_ == -1) {
-        if (streamObj.error) return 0;
+        if (streamObj.error || (streamObj.eof && i == 0)) return 0;
         else if (streamObj.eof) break;
       }
       {{{ makeSetValue('s', 'i', 'byte_', 'i8') }}}
@@ -3713,6 +3710,11 @@ LibraryManager.library = {
   exit__deps: ['_exit'],
   exit: function(status) {
     __exit(status);
+  },
+
+  _ZSt9terminatev__deps: ['exit'],
+  _ZSt9terminatev: function() {
+    _exit(-1234);
   },
 
   atexit: function(func, arg) {
@@ -4950,7 +4952,7 @@ LibraryManager.library = {
     var ret = 0;
     while (x) {
       if (x&1) ret++;
-      x >>= 1;
+      x >>>= 1;
     }
     return ret;
   },
@@ -5478,9 +5480,14 @@ LibraryManager.library = {
     return isNaN(x);
   },
   __isnan: 'isnan',
+
+  _reallyNegative: function(x) {
+    return x < 0 || (x === 0 && (1/x) === -Infinity);
+  },
+
+  copysign__deps: ['_reallyNegative'],
   copysign: function(a, b) {
-      if (a < 0 === b < 0) return a;
-      return -a;
+    return __reallyNegative(a) === __reallyNegative(b) ? a : -a;
   },
   copysignf: 'copysign',
   __signbit__deps: ['copysign'],
