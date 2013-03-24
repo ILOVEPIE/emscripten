@@ -1234,6 +1234,59 @@ m_divisor is 1091269979
       '''
       self.do_run(src, ',0,,2,C!,0,C!,0,,65535,C!,0,')
 
+    def test_negative_zero(self):
+      src = r'''
+        #include <stdio.h>
+        #include <math.h>
+
+        int main() {
+          #define TEST(x, y) \
+            printf("%.2f, %.2f ==> %.2f\n", x, y, copysign(x, y));
+          TEST( 5.0f,  5.0f);
+          TEST( 5.0f, -5.0f);
+          TEST(-5.0f,  5.0f);
+          TEST(-5.0f, -5.0f);
+          TEST( 5.0f,  4.0f);
+          TEST( 5.0f, -4.0f);
+          TEST(-5.0f,  4.0f);
+          TEST(-5.0f, -4.0f);
+          TEST( 0.0f,  5.0f);
+          TEST( 0.0f, -5.0f);
+          TEST(-0.0f,  5.0f);
+          TEST(-0.0f, -5.0f);
+          TEST( 5.0f,  0.0f);
+          TEST( 5.0f, -0.0f);
+          TEST(-5.0f,  0.0f);
+          TEST(-5.0f, -0.0f);
+          TEST( 0.0f,  0.0f);
+          TEST( 0.0f, -0.0f);
+          TEST(-0.0f,  0.0f);
+          TEST(-0.0f, -0.0f);
+          return 0;
+        }
+      '''
+      self.do_run(src, '''5.00, 5.00 ==> 5.00
+5.00, -5.00 ==> -5.00
+-5.00, 5.00 ==> 5.00
+-5.00, -5.00 ==> -5.00
+5.00, 4.00 ==> 5.00
+5.00, -4.00 ==> -5.00
+-5.00, 4.00 ==> 5.00
+-5.00, -4.00 ==> -5.00
+0.00, 5.00 ==> 0.00
+0.00, -5.00 ==> -0.00
+-0.00, 5.00 ==> 0.00
+-0.00, -5.00 ==> -0.00
+5.00, 0.00 ==> 5.00
+5.00, -0.00 ==> -5.00
+-5.00, 0.00 ==> 5.00
+-5.00, -0.00 ==> -5.00
+0.00, 0.00 ==> 0.00
+0.00, -0.00 ==> -0.00
+-0.00, 0.00 ==> 0.00
+-0.00, -0.00 ==> -0.00
+''')
+
     def test_llvm_intrinsics(self):
       if self.emcc_args == None: return self.skip('needs ta2')
 
@@ -1269,6 +1322,7 @@ m_divisor is 1091269979
             printf("%d,%d\n", (int)llvm_ctlz_i64(((int64_t)1) << 40), llvm_ctlz_i32(1<<10));
             printf("%d,%d\n", (int)llvm_cttz_i64(((int64_t)1) << 40), llvm_cttz_i32(1<<10));
             printf("%d,%d\n", (int)llvm_ctpop_i64((0x3101ULL << 32) | 1), llvm_ctpop_i32(0x3101));
+            printf("%d\n", (int)llvm_ctpop_i32(-594093059));
 
             printf("%d\n", llvm_expect_i32(x % 27, 3));
 
@@ -1286,6 +1340,7 @@ c5,de,15,8a
 23,21
 40,10
 5,4
+22
 13
 72057594037927936
 ''')
@@ -2661,7 +2716,6 @@ Exiting setjmp function, level: 0, prev_jmp: -1
       if Settings.ASM_JS: return self.skip('uses report_stack without exporting')
 
       Settings.INLINING_LIMIT = 50
-      Settings.CATCH_EXIT_CODE = 1
 
       src = r'''
         #include <stdio.h>
@@ -2702,7 +2756,7 @@ Exiting setjmp function, level: 0, prev_jmp: -1
       ''')
 
       self.emcc_args += ['--pre-js', 'pre.js']
-      self.do_run(src, '''reported\npostRun\nok.\nExit Status: 1\n''')
+      self.do_run(src, '''reported\nExit Status: 1\npostRun\nok.\n''')
 
     def test_class(self):
         src = '''
@@ -5095,7 +5149,7 @@ def process(filename):
         0
         0
         0
-        0
+        -0
         1
         1
         1
@@ -5794,6 +5848,30 @@ def process(filename):
       open('file_with_byte_234.txt', 'wb').write('\xea')
       self.emcc_args += ['--embed-file', 'file_with_byte_234.txt']
       self.do_run(src, '*234\n')
+
+    def test_fgets_eol(self):
+      if self.emcc_args is None: return self.skip('requires emcc')
+      src = r'''
+        #include <stdio.h>
+        char buf[32];
+        int main()
+        {
+          char *r = "SUCCESS";
+          FILE *f = fopen("eol.txt", "r");
+          while (fgets(buf, 32, f) != NULL) {
+            if (buf[0] == '\0') {
+              r = "FAIL";
+              break;
+            }
+          }
+          printf("%s\n", r);
+          fclose(f);
+          return 0;
+        }
+      '''
+      open('eol.txt', 'wb').write('\n')
+      self.emcc_args += ['--embed-file', 'eol.txt']
+      self.do_run(src, 'SUCCESS\n')
 
     def test_folders(self):
       add_pre_run = '''
@@ -8594,8 +8672,6 @@ def process(filename):
         Settings.CORRECT_SIGNS = 0
 
     def test_exit_status(self):
-      Settings.CATCH_EXIT_CODE = 1
-
       src = r'''
         #include <stdio.h>
         #include <stdlib.h>
@@ -8790,7 +8866,6 @@ class %s(T):
     Settings.INCLUDE_FULL_LIBRARY = 0
     Settings.BUILD_AS_SHARED_LIB = 0
     Settings.RUNTIME_LINKED_LIBS = []
-    Settings.CATCH_EXIT_CODE = 0
     Settings.EMULATE_UNALIGNED_ACCESSES = int(Settings.USE_TYPED_ARRAYS == 2 and Building.LLVM_OPTS == 2)
     Settings.DOUBLE_MODE = 1 if Settings.USE_TYPED_ARRAYS and Building.LLVM_OPTS == 0 else 0
     Settings.PRECISE_I64_MATH = 0
@@ -9979,6 +10054,7 @@ f.close()
         (path_from_root('tools', 'test-js-optimizer-asm-last.js'), open(path_from_root('tools', 'test-js-optimizer-asm-last-output.js')).read(),
          ['asm', 'last']),
       ]:
+        print input
         output = Popen(listify(NODE_JS) + [path_from_root('tools', 'js-optimizer.js'), input] + passes, stdin=PIPE, stdout=PIPE).communicate()[0]
         self.assertIdentical(expected, output.replace('\r\n', '\n').replace('\n\n', '\n'))
 
@@ -9995,13 +10071,19 @@ f.close()
       try:
         os.environ['EMCC_DEBUG'] = '1'
         for asm, linkable, chunks, js_chunks in [
-            (0, 0, 3, 2), (0, 1, 4, 4),
-            (1, 0, 3, 2), (1, 1, 4, 5)
+            (0, 0, 3, 2), (0, 1, 3, 4),
+            (1, 0, 3, 2), (1, 1, 3, 4)
           ]:
           print asm, linkable, chunks, js_chunks
-          output, err = Popen([PYTHON, EMCC, path_from_root('tests', 'hello_libcxx.cpp'), '-O1', '-s', 'LINKABLE=%d' % linkable, '-s', 'ASM_JS=%d' % asm, '-s', 'UNRESOLVED_AS_DEAD=1'], stdout=PIPE, stderr=PIPE).communicate()
-          assert 'phase 2 working on %d chunks' %chunks in err, err
-          assert 'splitting up js optimization into %d chunks' % js_chunks in err, err
+          output, err = Popen([PYTHON, EMCC, path_from_root('tests', 'hello_libcxx.cpp'), '-O1', '-s', 'LINKABLE=%d' % linkable, '-s', 'ASM_JS=%d' % asm, '-s', 'UNRESOLVED_AS_DEAD=1'] + (['-O2'] if asm else []), stdout=PIPE, stderr=PIPE).communicate()
+          ok = False
+          for c in range(chunks, chunks+2):
+            ok = ok or ('phase 2 working on %d chunks' % c in err)
+          assert ok, err
+          ok = False
+          for c in range(js_chunks, js_chunks+2):
+            ok = ok or ('splitting up js optimization into %d chunks' % c in err)
+          assert ok, err
       finally:
         del os.environ['EMCC_DEBUG']
 

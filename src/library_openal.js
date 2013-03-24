@@ -72,6 +72,12 @@ var LibraryOpenAL = {
     }
   },
 
+  alcGetError__deps: ['alGetError'],
+  alcGetError: function(device) {
+    // We have only one audio device, so just return alGetError.
+    return _alGetError();
+  },
+
   alDeleteSources: function(count, sources)
   {
     if (!AL.currentContext) {
@@ -81,7 +87,7 @@ var LibraryOpenAL = {
       return;
     }
     for (var i = 0; i < count; ++i) {
-      var sourceIdx = {{{ makeGetValue('sources', 'i', 'i32') }}} - 1;
+      var sourceIdx = {{{ makeGetValue('sources', 'i*4', 'i32') }}} - 1;
       delete AL.currentContext.src[sourceIdx];
     }
   },
@@ -96,14 +102,9 @@ var LibraryOpenAL = {
     for (var i = 0; i < count; ++i) {
       var gain = AL.currentContext.ctx.createGain();
       var panner = AL.currentContext.ctx.createPanner();
-      if (typeof(webkitAudioContext) == 'function') {
-        gain.connect(panner);
-        panner.connect(AL.currentContext.ctx.destination);
-      } else {
-        // Work around a Firefox bug (bug 849916)
-        gain.connect(AL.currentContext.ctx.destination);
-      }
-      gain.gain.value = 1; // work around a Firefox bug (bug 850970)
+      panner.panningModel = "equalpower";
+      gain.connect(panner);
+      panner.connect(AL.currentContext.ctx.destination);
       AL.currentContext.src.push({
         loop: false,
         buffer: null,
@@ -113,7 +114,7 @@ var LibraryOpenAL = {
         playTime: -1,
         pausedTime: 0
       });
-      {{{ makeSetValue('sources', 'i', 'AL.currentContext.src.length', 'i32') }}};
+      {{{ makeSetValue('sources', 'i*4', 'AL.currentContext.src.length', 'i32') }}};
     }
   },
 
@@ -196,15 +197,15 @@ var LibraryOpenAL = {
     case 0x1004 /* AL_POSITION */:
       AL.currentContext.src[source - 1].panner.setPosition(
           {{{ makeGetValue('value', '0', 'float') }}},
-          {{{ makeGetValue('value', '1', 'float') }}},
-          {{{ makeGetValue('value', '2', 'float') }}}
+          {{{ makeGetValue('value', '4', 'float') }}},
+          {{{ makeGetValue('value', '8', 'float') }}}
         );
       break;
     case 0x1006 /* AL_VELOCITY */:
       AL.currentContext.src[source - 1].panner.setVelocity(
           {{{ makeGetValue('value', '0', 'float') }}},
-          {{{ makeGetValue('value', '1', 'float') }}},
-          {{{ makeGetValue('value', '2', 'float') }}}
+          {{{ makeGetValue('value', '4', 'float') }}},
+          {{{ makeGetValue('value', '8', 'float') }}}
         );
       break;
     default:
@@ -235,7 +236,7 @@ var LibraryOpenAL = {
       return;
     }
     for (var i = 0; i < count; ++i) {
-      var buffer = {{{ makeGetValue('buffers', 'i', 'i32') }}};
+      var buffer = {{{ makeGetValue('buffers', 'i*4', 'i32') }}};
       if (buffer > AL.currentContext.buf.length) {
 #if OPENAL_DEBUG
         console.error("alSourceQueueBuffers called with an invalid buffer");
@@ -270,7 +271,7 @@ var LibraryOpenAL = {
       var buffer = AL.currentContext.src[source - 1].buffer;
       for (var j = 0; j < AL.currentContext.buf.length; ++j) {
         if (buffer == AL.currentContext.buf[j].buf) {
-          {{{ makeSetValue('buffers', 'i', 'j+1', 'i32') }}};
+          {{{ makeSetValue('buffers', 'i*4', 'j+1', 'i32') }}};
           AL.currentContext.src[source - 1].buffer = null;
           break;
         }
@@ -287,7 +288,7 @@ var LibraryOpenAL = {
       return;
     }
     for (var i = 0; i < count; ++i) {
-      var bufferIdx = {{{ makeGetValue('buffers', 'i', 'i32') }}} - 1;
+      var bufferIdx = {{{ makeGetValue('buffers', 'i*4', 'i32') }}} - 1;
       var buffer = AL.currentContext.buf[bufferIdx].buf;
       for (var j = 0; j < AL.currentContext.src.length; ++j) {
         if (buffer == AL.currentContext.src[j].buffer) {
@@ -308,7 +309,7 @@ var LibraryOpenAL = {
     }
     for (var i = 0; i < count; ++i) {
       AL.currentContext.buf.push({buf: null});
-      {{{ makeSetValue('buffers', 'i', 'AL.currentContext.buf.length', 'i32') }}};
+      {{{ makeSetValue('buffers', 'i*4', 'AL.currentContext.buf.length', 'i32') }}};
     }
   },
 
@@ -385,22 +386,25 @@ var LibraryOpenAL = {
       return;
     }
     var offset = 0;
-    if ("src" in AL.currentContext.src[source - 1]) {
-      // If the source is already playing, we need to resume from beginning.
-      // We do that by stopping the current source and replaying it.
-      _alSourceStop(source);
-    } else if (AL.currentContext.src[source - 1].paused) {
-      // So now we have to resume playback, remember the offset here.
-      offset = AL.currentContext.src[source - 1].pausedTime -
-               AL.currentContext.src[source - 1].playTime;
+    if ("src" in AL.currentContext.src[source - 1] &&
+        AL.currentContext.src[source - 1]["src"].buffer ==
+        AL.currentContext.src[source - 1].buffer) {
+      if (AL.currentContext.src[source - 1].paused) {
+        // So now we have to resume playback, remember the offset here.
+        offset = AL.currentContext.src[source - 1].pausedTime -
+                 AL.currentContext.src[source - 1].playTime;
+      } else {
+        // If the source is already playing, we need to resume from beginning.
+        // We do that by stopping the current source and replaying it.
+        _alSourceStop(source);
+      }
     }
     var src = AL.currentContext.ctx.createBufferSource();
     src.loop = AL.currentContext.src[source - 1].loop;
     src.buffer = AL.currentContext.src[source - 1].buffer;
     src.connect(AL.currentContext.src[source - 1].gain);
     src.start(0, offset);
-    // Work around Firefox bug 851338
-    AL.currentContext.src[source - 1].playTime = AL.currentContext.ctx.currentTime || 0;
+    AL.currentContext.src[source - 1].playTime = AL.currentContext.ctx.currentTime;
     AL.currentContext.src[source - 1].paused = false;
     AL.currentContext.src[source - 1]['src'] = src;
   },
@@ -440,8 +444,7 @@ var LibraryOpenAL = {
     if ("src" in AL.currentContext.src[source - 1] &&
         !AL.currentContext.src[source - 1].paused) {
       AL.currentContext.src[source - 1].paused = true;
-      // Work around Firefox bug 851338
-      AL.currentContext.src[source - 1].pausedTime = AL.currentContext.ctx.currentTime || 0;
+      AL.currentContext.src[source - 1].pausedTime = AL.currentContext.ctx.currentTime;
       AL.currentContext.src[source - 1]["src"].stop(0);
       delete AL.currentContext.src[source - 1].src;
     }
@@ -513,9 +516,43 @@ var LibraryOpenAL = {
   },
 
   alListenerfv: function(param, values) {
+    if (!AL.currentContext) {
 #if OPENAL_DEBUG
-    console.log("alListenerfv is not supported yet");
+      console.error("alListenerfv called without a valid context");
 #endif
+      return;
+    }
+    switch (param) {
+    case 0x1004 /* AL_POSITION */:
+      AL.currentContext.ctx.listener.setPosition(
+          {{{ makeGetValue('values', '0', 'float') }}},
+          {{{ makeGetValue('values', '4', 'float') }}},
+          {{{ makeGetValue('values', '8', 'float') }}}
+        );
+      break;
+    case 0x1006 /* AL_VELOCITY */:
+      AL.currentContext.ctx.listener.setVelocity(
+          {{{ makeGetValue('values', '0', 'float') }}},
+          {{{ makeGetValue('values', '4', 'float') }}},
+          {{{ makeGetValue('values', '8', 'float') }}}
+        );
+      break;
+    case 0x100F /* AL_ORIENTATION */:
+      AL.currentContext.ctx.listener.setOrientation(
+          {{{ makeGetValue('values', '0', 'float') }}},
+          {{{ makeGetValue('values', '4', 'float') }}},
+          {{{ makeGetValue('values', '8', 'float') }}},
+          {{{ makeGetValue('values', '12', 'float') }}},
+          {{{ makeGetValue('values', '16', 'float') }}},
+          {{{ makeGetValue('values', '20', 'float') }}}
+        );
+      break;
+    default:
+#if OPENAL_DEBUG
+      console.log("alListenerfv with param " + param + " not implemented yet");
+#endif
+      break;
+    }
   },
 
   alIsExtensionPresent: function(extName) {
@@ -533,7 +570,6 @@ var LibraryOpenAL = {
   alcGetProcAddress: function(device, fname) {
     return 0;
   },
-
 };
 
 autoAddDeps(LibraryOpenAL, '$AL');
